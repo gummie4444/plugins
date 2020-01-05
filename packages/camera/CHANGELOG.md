@@ -1,3 +1,7 @@
+
+## 0.5.dispo
+* zoom
+
 ## 0.5.7+2
 
 * Remove the deprecated `author:` field from pubspec.yaml
@@ -9,8 +13,6 @@
 * Fix example null exception.
 
 ## 0.5.7
-
-* Fix unawaited futures.
 
 ## 0.5.6+4
 

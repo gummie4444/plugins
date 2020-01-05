@@ -77,6 +77,36 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
           camera.takePicture(call.argument("path"), result);
           break;
         }
+      case "zoom":
+        {
+          try {
+            camera.zoom(call.argument("step"));
+            result.success(null);
+          } catch (CameraAccessException e) {
+            result.error("CameraAccess", e.getMessage(), null);
+          }
+          break;
+        }
+      case "zoomIn":
+        {
+          try {
+            camera.zoom(1);
+            result.success(null);
+          } catch (CameraAccessException e) {
+            result.error("CameraAccess", e.getMessage(), null);
+          }
+          break;
+        }
+      case "zoomOut":
+        {
+          try {
+            camera.zoom(-1);
+            result.success(null);
+          } catch (CameraAccessException e) {
+            result.error("CameraAccess", e.getMessage(), null);
+          }
+          break;
+        }
       case "prepareForVideoRecording":
         {
           // This optimization is not required for Android.

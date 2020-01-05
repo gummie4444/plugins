@@ -237,7 +237,17 @@ class _CameraExampleHomeState extends State<CameraExampleHome>
                   controller.value.isRecordingVideo
               ? onStopButtonPressed
               : null,
-        )
+        ),
+        IconButton(
+          icon: const Icon(Icons.zoom_in),
+          color: Colors.blue,
+          onPressed: controller != null ? onZoomInButtonPressed : null,
+        ),
+        IconButton(
+          icon: const Icon(Icons.zoom_out),
+          color: Colors.blue,
+          onPressed: controller != null ? onZoomOutButtonPressed : null,
+        ),
       ],
     );
   }
@@ -329,6 +339,20 @@ class _CameraExampleHomeState extends State<CameraExampleHome>
       if (mounted) setState(() {});
       showInSnackBar('Video recorded to: $videoPath');
     });
+  }
+
+  void onZoomInButtonPressed() {
+    if (controller == null) {
+      return;
+    }
+    controller.zoomIn();
+  }
+
+  void onZoomOutButtonPressed() {
+    if (controller == null) {
+      return;
+    }
+    controller.zoomOut();
   }
 
   void onPauseButtonPressed() {
