@@ -139,16 +139,31 @@ public class Camera {
     mediaRecorder.prepare();
   }
 
+
+  private void preparePictureImageReader() {
+    if (pictureImageReader != null) {
+      pictureImageReader.close();
+    }
+    pictureImageReader =
+            ImageReader.newInstance(
+                    captureSize.getWidth(), captureSize.getHeight(), ImageFormat.JPEG, 2);
+
+  }
+
+  private void prepareImageStreamReader() {
+    if (pictureImageReader != null) {
+      pictureImageReader.close();
+    }
+
+    imageStreamReader =
+            ImageReader.newInstance(
+                    previewSize.getWidth(), previewSize.getHeight(), ImageFormat.YUV_420_888, 2);
+
+  }
   @SuppressLint("MissingPermission")
   public void open(@NonNull final Result result) throws CameraAccessException {
-    pictureImageReader =
-        ImageReader.newInstance(
-            captureSize.getWidth(), captureSize.getHeight(), ImageFormat.JPEG, 2);
-
-    // Used to steam image byte data to dart side.
-    imageStreamReader =
-        ImageReader.newInstance(
-            previewSize.getWidth(), previewSize.getHeight(), ImageFormat.YUV_420_888, 2);
+    preparePictureImageReader();
+    prepareImageStreamReader();
 
     cameraManager.openCamera(
         cameraName,
