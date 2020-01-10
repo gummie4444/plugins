@@ -17,6 +17,9 @@ import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CameraMetadata;
 import android.hardware.camera2.CaptureFailure;
 import android.hardware.camera2.CaptureRequest;
+import android.hardware.camera2.CaptureResult;
+import android.hardware.camera2.TotalCaptureResult;
+import android.hardware.camera2.params.MeteringRectangle;
 import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.CamcorderProfile;
 import android.media.Image;
@@ -98,7 +101,10 @@ public class Camera {
 
   private CameraCharacteristics mCameraCharacteristics;
   private int mWhiteBalance = Constants.WB_AUTO;
-
+  private boolean mManualFocusEngaged = false;
+  private boolean isMeteringAreaAFSupported() {
+        return mCameraCharacteristics.get(CameraCharacteristics.CONTROL_MAX_REGIONS_AF) >= 1;
+  }
   // Mirrors camera.dart
   public enum ResolutionPreset {
     low,
@@ -287,8 +293,182 @@ public class Camera {
     return flutterTexture;
   }
 
-  public void takePicture(String filePath, @NonNull final Result result) {
+  /**
+   * A {@link CameraCaptureSession.CaptureCallback} for capturing a still picture.
+   */
+  private static abstract class PictureCaptureCallback
+          extends CameraCaptureSession.CaptureCallback {
+
+    static final int STATE_PREVIEW = 0;
+    static final int STATE_LOCKING = 1;
+    static final int STATE_LOCKED = 2;
+    static final int STATE_PRECAPTURE = 3;
+    static final int STATE_WAITING = 4;
+    static final int STATE_CAPTURING = 5;
+
+    private int mState;
+    public String filePath;
+    private Result result;
+
+    PictureCaptureCallback() {
+    }
+
+    void setState(int state) {
+      mState = state;
+    }
+
+
+    @Override
+    public void onCaptureProgressed(@NonNull CameraCaptureSession session,
+                                    @NonNull CaptureRequest request, @NonNull CaptureResult partialResult) {
+      process(partialResult);
+    }
+
+    @Override
+    public void onCaptureCompleted(@NonNull CameraCaptureSession session,
+                                   @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
+      process(result);
+    }
+
+    private void process(@NonNull CaptureResult result) {
+      switch (mState) {
+        case STATE_LOCKING: {
+          Integer af = result.get(CaptureResult.CONTROL_AF_STATE);
+          if (af == null) {
+            break;
+          }
+          if (af == CaptureResult.CONTROL_AF_STATE_FOCUSED_LOCKED ||
+                  af == CaptureResult.CONTROL_AF_STATE_NOT_FOCUSED_LOCKED) {
+            Integer ae = result.get(CaptureResult.CONTROL_AE_STATE);
+            if (ae == null || ae == CaptureResult.CONTROL_AE_STATE_CONVERGED) {
+              setState(STATE_CAPTURING);
+              onReady();
+            } else {
+              setState(STATE_LOCKED);
+              onPrecaptureRequired();
+            }
+          }
+          break;
+        }
+        case STATE_PRECAPTURE: {
+          Integer ae = result.get(CaptureResult.CONTROL_AE_STATE);
+          if (ae == null || ae == CaptureResult.CONTROL_AE_STATE_PRECAPTURE ||
+                  ae == CaptureRequest.CONTROL_AE_STATE_FLASH_REQUIRED ||
+                  ae == CaptureResult.CONTROL_AE_STATE_CONVERGED) {
+            setState(STATE_WAITING);
+          }
+          break;
+        }
+        case STATE_WAITING: {
+          Integer ae = result.get(CaptureResult.CONTROL_AE_STATE);
+          if (ae == null || ae != CaptureResult.CONTROL_AE_STATE_PRECAPTURE) {
+            setState(STATE_CAPTURING);
+            onReady();
+          }
+          break;
+        }
+      }
+    }
+
+    /**
+     * Called when it is ready to take a still picture.
+     */
+    public abstract void onReady();
+
+    /**
+     * Called when it is necessary to run the precapture sequence.
+     */
+    public abstract void onPrecaptureRequired();
+
+    public void setFilePath(String filePath) {
+      this.filePath = filePath;
+    }
+
+    public void setResult(Result result) {
+      this.result = result;
+    }
+
+    public Result getResult() {
+      return result;
+    }
+  }
+
+  PictureCaptureCallback mCaptureCallback = new PictureCaptureCallback() {
+
+    @Override
+    public void onPrecaptureRequired() {
+      Log.d(TAG, "PrecatureRequired");
+      mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER,
+              CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_START);
+      setState(STATE_PRECAPTURE);
+      try {
+        mCaptureSession.capture(mPreviewRequestBuilder.build(), this, null);
+        mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER,
+                CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_IDLE);
+      } catch (CameraAccessException e) {
+        Log.e(TAG, "Failed to run precapture sequence.", e);
+      }
+    }
+
+    @Override
+    public void onReady() {
+      captureStillPicture(this.filePath, this.getResult());
+    }
+
+  };
+
+
+  /**
+   * Unlocks the auto-focus and restart camera preview. This is supposed to be called after
+   * capturing a still picture.
+   */
+  void unlockFocus() {
+    mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER,
+            CaptureRequest.CONTROL_AF_TRIGGER_CANCEL);
+    try {
+      mCaptureSession.capture(mPreviewRequestBuilder.build(), mCaptureCallback, null);
+      updateAutoFocus();
+      updateFlash();
+        mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER,
+                CaptureRequest.CONTROL_AF_TRIGGER_IDLE);
+        mCaptureSession.setRepeatingRequest(mPreviewRequestBuilder.build(), mCaptureCallback,
+                null);
+        mCaptureCallback.setState(PictureCaptureCallback.STATE_PREVIEW);
+
+    } catch (CameraAccessException e) {
+      Log.e(TAG, "Failed to restart camera preview.", e);
+    }
+  }
+  /**
+   * Locks the focus as the first step for a still image capture.
+   */
+  private void lockFocus() {
+    Log.d(TAG, "lockFocus");
+
+    mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER,
+            CaptureRequest.CONTROL_AF_TRIGGER_START);
+    try {
+      mCaptureCallback.setState(PictureCaptureCallback.STATE_LOCKING);
+      mCaptureSession.capture(mPreviewRequestBuilder.build(), mCaptureCallback, null);
+    } catch (CameraAccessException e) {
+      Log.e(TAG, "Failed to lock focus.", e);
+    }
+  }
+
+
+  public void takePicture(String filePath, @NonNull final Result result){
+    mCaptureCallback.setFilePath(filePath);
+    mCaptureCallback.setResult(result);
+
+    if (mAutoFocus) {
+      lockFocus();
+    } else {
+      captureStillPicture(filePath,result);
+    }
+  }
+  public void captureStillPicture(String filePath, @NonNull final Result result) {
     final File file = new File(filePath);
+
 
     if (file.exists()) {
       result.error(
@@ -353,6 +533,13 @@ public class Camera {
       mCaptureSession.capture(
           captureBuilder.build(),
           new CameraCaptureSession.CaptureCallback() {
+              @Override
+              public void onCaptureCompleted(@NonNull CameraCaptureSession session,
+                                             @NonNull CaptureRequest request,
+                                             @NonNull TotalCaptureResult result) {
+                      unlockFocus();
+
+              }
             @Override
             public void onCaptureFailed(
                 @NonNull CameraCaptureSession session,
@@ -751,6 +938,90 @@ public class Camera {
     flutterTexture.release();
     orientationEventListener.disable();
   }
+
+    public boolean focusToPoint(double offsetX, double offsetY) throws CameraAccessException {
+//TODO this is ubllshit
+/*        if (mManualFocusEngaged) {
+            Log.d(TAG, "Manual focus already engaged");
+            return true;
+        }*/
+
+        //final Rect sensorArraySize = mCameraInfo.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
+/*
+        Log.d(previewSize, "Manual focus already engaged");
+        Log.d(sensorArraySize.height(), "Manual focus already engaged");*/
+        final Rect sensorArraySize = mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
+
+        final int x = (int)(offsetX  * (float)sensorArraySize.height());
+        final int y = (int)(offsetY * (float)sensorArraySize.width());
+
+
+        final int halfTouchWidth = 150; //(int)motionEvent.getTouchMajor(); //TODO: this doesn't represent actual touch size in pixel. Values range in [3, 10]...
+        final int halfTouchHeight = 150; //(int)motionEvent.getTouchMinor();
+        MeteringRectangle focusAreaTouch = new MeteringRectangle(Math.max(x - halfTouchWidth, 0),
+                Math.max(y - halfTouchHeight, 0),
+                halfTouchWidth * 2,
+                halfTouchHeight * 2,
+                MeteringRectangle.METERING_WEIGHT_MAX - 1);
+
+
+
+        CameraCaptureSession.CaptureCallback captureCallbackHandler = new CameraCaptureSession.CaptureCallback() {
+            @Override
+            public void onCaptureCompleted(CameraCaptureSession session, CaptureRequest request, TotalCaptureResult result) {
+                super.onCaptureCompleted(session, request, result);
+                mManualFocusEngaged = false;
+                Log.i("baba", "babababa");
+                if (request.getTag() == "FOCUS_TAG") {
+                    //the focus trigger is complete -
+                    //resume repeating (preview surface will get frames), clear AF trigger
+                    mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER, null);
+                    try {
+                        mCaptureSession.setRepeatingRequest(mPreviewRequestBuilder.build(), null, null);
+                    } catch (CameraAccessException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+
+            @Override
+            public void onCaptureFailed(CameraCaptureSession session, CaptureRequest request, CaptureFailure failure) {
+                super.onCaptureFailed(session, request, failure);
+                Log.e(TAG, "Manual AF failure: " + failure);
+                mManualFocusEngaged = false;
+            }
+        };
+
+        //first stop the existing repeating request
+        try {
+            mCaptureSession.stopRepeating();
+        } catch (CameraAccessException e) {
+            Log.e(TAG, "Failed to manual focus.", e);
+        }
+
+        //cancel any existing AF trigger (repeated touches, etc.)
+      mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_CANCEL);
+      mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF);
+      mCaptureSession.capture(mPreviewRequestBuilder.build(), captureCallbackHandler, null);
+
+        //Now add a new AF trigger with focus region
+        if (isMeteringAreaAFSupported()) {
+          mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_REGIONS, new MeteringRectangle[]{focusAreaTouch});
+        }
+      mPreviewRequestBuilder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
+      mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_AUTO);
+      mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_START);
+      mPreviewRequestBuilder.setTag("FOCUS_TAG"); //we'll capture this later for resuming the preview
+
+        Log.i("Test", "Test");
+
+        //then we ask for a single request (not repeating!)
+        mCaptureSession.capture(mPreviewRequestBuilder.build(), captureCallbackHandler, null);
+        mManualFocusEngaged = true;
+
+        return true;
+
+    }
 
 
   public void zoom(double step) throws CameraAccessException {

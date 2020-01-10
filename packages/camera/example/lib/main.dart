@@ -88,13 +88,17 @@ class _CameraExampleHomeState extends State<CameraExampleHome>
               child: Padding(
                 padding: const EdgeInsets.all(1.0),
                 child: Center(
-                  child: ZoomableWidget(child:_cameraPreviewWidget(), onZoom: (zoom){
-                    print('zoom');
-                    if(zoom < 11) {
-                      controller.zoom(zoom);
-                    }
-                  })
-                ),
+                    child: ZoomableWidget(
+                        child: _cameraPreviewWidget(),
+                        onTapUp: (scaledPoint) {
+                          controller.setPointOfInterest(scaledPoint);
+                        },
+                        onZoom: (zoom) {
+                          print('zoom');
+                          if (zoom < 11) {
+                            controller.zoom(zoom);
+                          }
+                        })),
               ),
               decoration: BoxDecoration(
                 color: Colors.black,
@@ -138,7 +142,15 @@ class _CameraExampleHomeState extends State<CameraExampleHome>
     } else {
       return AspectRatio(
         aspectRatio: controller.value.aspectRatio,
-        child: CameraPreview(controller),
+        child: GestureDetector(
+            child: CameraPreview(controller),
+            onTapUp: (TapUpDetails det) {
+              final RenderBox box = context.findRenderObject();
+              final Offset localPoint = box.globalToLocal(det.globalPosition);
+              final Offset scaledPoint =
+                  localPoint.scale(1 / box.size.width, 1 / box.size.height);
+              controller.setPointOfInterest(scaledPoint);
+            }),
       );
     }
   }
@@ -240,12 +252,11 @@ class _CameraExampleHomeState extends State<CameraExampleHome>
               ? Icon(Icons.access_alarm)
               : Icon(Icons.access_alarms),
           color: Colors.blue,
-          onPressed: (controller != null &&
-              controller.value.isInitialized)
-               ? toogleAutoFocus : null,
+          onPressed: (controller != null && controller.value.isInitialized)
+              ? toogleAutoFocus
+              : null,
         ),
         _flashButton(),
-
         IconButton(
           icon: const Icon(Icons.stop),
           color: Colors.red,
@@ -255,10 +266,10 @@ class _CameraExampleHomeState extends State<CameraExampleHome>
               ? onStopButtonPressed
               : null,
         ),
-
       ],
     );
   }
+
   /// Flash Toggle Button
   Widget _flashButton() {
     IconData iconData = Icons.flash_off;
@@ -278,25 +289,27 @@ class _CameraExampleHomeState extends State<CameraExampleHome>
           : null,
     );
   }
+
   /// Toggle Flash
   Future<void> _onFlashButtonPressed() async {
     bool hasFlash = false;
-      if (flashMode == FlashMode.off || flashMode == FlashMode.torch) {
-        // Turn on the flash for capture
-        flashMode = FlashMode.alwaysFlash;
-      } else if (flashMode == FlashMode.alwaysFlash) {
-        // Turn on the flash for capture if needed
-        flashMode = FlashMode.autoFlash;
-      } else {
-        // Turn off the flash
-        flashMode = FlashMode.off;
-      }
-      // Apply the new mode
-      await controller.setFlashMode(flashMode);
+    if (flashMode == FlashMode.off || flashMode == FlashMode.torch) {
+      // Turn on the flash for capture
+      flashMode = FlashMode.alwaysFlash;
+    } else if (flashMode == FlashMode.alwaysFlash) {
+      // Turn on the flash for capture if needed
+      flashMode = FlashMode.autoFlash;
+    } else {
+      // Turn off the flash
+      flashMode = FlashMode.off;
+    }
+    // Apply the new mode
+    await controller.setFlashMode(flashMode);
 
     // Change UI State
     setState(() {});
   }
+
   /// Display a row of toggle to select the camera (or a message if no camera is available).
   Widget _cameraTogglesRowWidget() {
     final List<Widget> toggles = <Widget>[];
@@ -386,7 +399,6 @@ class _CameraExampleHomeState extends State<CameraExampleHome>
     });
   }
 
-
   void onPauseButtonPressed() {
     pauseVideoRecording().then((_) {
       if (mounted) setState(() {});
@@ -401,11 +413,9 @@ class _CameraExampleHomeState extends State<CameraExampleHome>
     });
   }
 
-
   void toogleAutoFocus() {
     controller.setAutoFocus(!controller.value.autoFocusEnabled);
     showInSnackBar('Toogle auto focus');
-
   }
 
   Future<String> startVideoRecording() async {
@@ -554,8 +564,10 @@ Future<void> main() async {
 class ZoomableWidget extends StatefulWidget {
   final Widget child;
   final Function onZoom;
+  final Function onTapUp;
 
-  const ZoomableWidget({Key key, this.child, this.onZoom}) : super(key: key);
+  const ZoomableWidget({Key key, this.child, this.onZoom, this.onTapUp})
+      : super(key: key);
 
   @override
   _ZoomableWidgetState createState() => _ZoomableWidgetState();
@@ -568,19 +580,17 @@ class _ZoomableWidgetState extends State<ZoomableWidget> {
 
   @override
   Widget build(BuildContext context) {
-
-
     return GestureDetector(
       onScaleStart: (scaleDetails) {
         print('scalStart');
         setState(() => prevZoom = zoom);
         //print(scaleDetails);
-        },
+      },
       onScaleUpdate: (ScaleUpdateDetails scaleDetails) {
-         var newZoom = (prevZoom * scaleDetails.scale);
+        var newZoom = (prevZoom * scaleDetails.scale);
 
-        if(newZoom >= 1) {
-          if(newZoom > 10){
+        if (newZoom >= 1) {
+          if (newZoom > 10) {
             return;
           }
           setState(() => zoom = newZoom);
@@ -589,9 +599,16 @@ class _ZoomableWidgetState extends State<ZoomableWidget> {
 
         widget.onZoom(zoom);
       },
-      onScaleEnd: (scaleDetails){
+      onScaleEnd: (scaleDetails) {
         print('end');
         //print(scaleDetails);
+      },
+      onTapUp: (TapUpDetails det) {
+        final RenderBox box = context.findRenderObject();
+        final Offset localPoint = box.globalToLocal(det.globalPosition);
+        final Offset scaledPoint =
+            localPoint.scale(1 / box.size.width, 1 / box.size.height);
+            widget.onTapUp(scaledPoint);
       },
       child: widget.child,
     );

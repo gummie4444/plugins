@@ -81,7 +81,17 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
           camera.takePicture(call.argument("path"), result);
           break;
         }
+      case "setPointOfInterest":
+      {
+        //result.notImplemented();
 
+        try {
+          camera.focusToPoint(call.argument("offsetX"),call.argument("offsetY"));
+        } catch (CameraAccessException e) {
+          handleException(e, result);
+        }
+        break;
+      }
       case "zoom":
         {
           try {
