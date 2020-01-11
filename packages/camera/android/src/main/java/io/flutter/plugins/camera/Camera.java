@@ -97,6 +97,7 @@ public class Camera {
   private int mFlash = Constants.FLASH_OFF;
 
   private CameraCharacteristics mCameraCharacteristics;
+  private int mWhiteBalance = Constants.WB_AUTO;
 
   // Mirrors camera.dart
   public enum ResolutionPreset {
@@ -335,9 +336,6 @@ public class Camera {
                     CaptureRequest.FLASH_MODE_TORCH);
             break;
           case Constants.FLASH_AUTO:
-            captureBuilder.set(CaptureRequest.CONTROL_AE_MODE,
-                    CaptureRequest.CONTROL_AE_MODE_ON_AUTO_FLASH);
-            break;
           case Constants.FLASH_RED_EYE:
             captureBuilder.set(CaptureRequest.CONTROL_AE_MODE,
                     CaptureRequest.CONTROL_AE_MODE_ON_AUTO_FLASH);
@@ -348,6 +346,7 @@ public class Camera {
       captureBuilder.set(
               CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER,
               CameraMetadata.CONTROL_AE_PRECAPTURE_TRIGGER_START);
+
       captureBuilder.set(CaptureRequest.JPEG_ORIENTATION, getMediaOrientation());
 
 
@@ -422,6 +421,7 @@ public class Camera {
 
               updateAutoFocus();
               updateFlash();
+              updateWhiteBalance();
 
               mPreviewRequestBuilder.set(
                   CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
@@ -449,6 +449,39 @@ public class Camera {
     surfaceList.addAll(remainingSurfaces);
     // Start the session
     cameraDevice.createCaptureSession(surfaceList, callback, null);
+  }
+
+
+  /**
+   * Updates the internal state of white balance to {@link #mWhiteBalance}.
+   */
+  void updateWhiteBalance() {
+    switch (mWhiteBalance) {
+      case Constants.WB_AUTO:
+        mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AWB_MODE,
+                CaptureRequest.CONTROL_AWB_MODE_AUTO);
+        break;
+      case Constants.WB_CLOUDY:
+        mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AWB_MODE,
+                CaptureRequest.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT);
+        break;
+      case Constants.WB_FLUORESCENT:
+        mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AWB_MODE,
+                CaptureRequest.CONTROL_AWB_MODE_FLUORESCENT);
+        break;
+      case Constants.WB_INCANDESCENT:
+        mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AWB_MODE,
+                CaptureRequest.CONTROL_AWB_MODE_INCANDESCENT);
+        break;
+      case Constants.WB_SHADOW:
+        mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AWB_MODE,
+                CaptureRequest.CONTROL_AWB_MODE_SHADE);
+        break;
+      case Constants.WB_SUNNY:
+        mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AWB_MODE,
+                CaptureRequest.CONTROL_AWB_MODE_DAYLIGHT);
+        break;
+    }
   }
 
   void setFlash(int flash) {
@@ -508,11 +541,6 @@ public class Camera {
                   CaptureRequest.FLASH_MODE_OFF);
           break;
       }
-      // Request Auto Exposure mode as recommended when you switch the Flash
-      // more information:
-      // https://developer.android.com/reference/android/hardware/camera2/CaptureRequest.html#FLASH_MODE
-
-
     }
   }
 
