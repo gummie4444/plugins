@@ -151,8 +151,8 @@ public class Camera {
   }
 
   private void prepareImageStreamReader() {
-    if (pictureImageReader != null) {
-      pictureImageReader.close();
+    if (imageStreamReader != null) {
+      imageStreamReader.close();
     }
 
     imageStreamReader =
