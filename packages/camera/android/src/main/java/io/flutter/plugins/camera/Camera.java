@@ -16,6 +16,8 @@ import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CameraMetadata;
 import android.hardware.camera2.CaptureFailure;
 import android.hardware.camera2.CaptureRequest;
+import android.hardware.camera2.CaptureResult;
+import android.hardware.camera2.TotalCaptureResult;
 import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.CamcorderProfile;
 import android.media.Image;
@@ -41,6 +43,31 @@ import java.util.List;
 import java.util.Map;
 
 public class Camera {
+  /**
+   * Camera state: Showing camera preview.
+   */
+  private static final int STATE_PREVIEW = 0;
+
+  /**
+   * Camera state: Waiting for the focus to be locked.
+   */
+  private static final int STATE_WAITING_LOCK = 1;
+
+  /**
+   * Camera state: Waiting for the exposure to be precapture state.
+   */
+  private static final int STATE_WAITING_PRECAPTURE = 2;
+
+  /**
+   * Camera state: Waiting for the exposure state to be something other than precapture.
+   */
+  private static final int STATE_WAITING_NON_PRECAPTURE = 3;
+
+  /**
+   * Camera state: Picture was taken.
+   */
+  private static final int STATE_PICTURE_TAKEN = 4;
+
   private final SurfaceTextureEntry flutterTexture;
   private final CameraManager cameraManager;
   private final OrientationEventListener orientationEventListener;
@@ -50,17 +77,26 @@ public class Camera {
   private final Size captureSize;
   private final Size previewSize;
   private final boolean enableAudio;
+  private final boolean mFlashSupported;
 
   private CameraDevice cameraDevice;
   private CameraCaptureSession mCaptureSession;
   private ImageReader pictureImageReader;
   private ImageReader imageStreamReader;
   private DartMessenger dartMessenger;
-  private CaptureRequest.Builder captureRequestBuilder;
+  private CaptureRequest.Builder mPreviewRequestBuilder;
   private MediaRecorder mediaRecorder;
   private boolean recordingVideo;
   private CamcorderProfile recordingProfile;
   private int currentOrientation = ORIENTATION_UNKNOWN;
+
+  private static final String TAG = "Camera2BasicFragment";
+
+
+  private boolean mAutoFocus;
+  private int mFlash = Constants.FLASH_OFF;
+
+  private CameraCharacteristics mCameraCharacteristics;
 
   // Mirrors camera.dart
   public enum ResolutionPreset {
@@ -79,7 +115,9 @@ public class Camera {
       final String cameraName,
       final String resolutionPreset,
       final boolean enableAudio,
-      final boolean autoFocusEnabled)
+      final boolean autoFocusEnabled,
+      final int flashMode
+  )
       throws CameraAccessException {
     if (activity == null) {
       throw new IllegalStateException("No activity available!");
@@ -91,6 +129,7 @@ public class Camera {
     this.dartMessenger = dartMessenger;
     this.cameraManager = (CameraManager) activity.getSystemService(Context.CAMERA_SERVICE);
     this.mAutoFocus = autoFocusEnabled;
+    this.mFlash = flashMode;
 
     orientationEventListener =
         new OrientationEventListener(activity.getApplicationContext()) {
@@ -105,14 +144,18 @@ public class Camera {
         };
     orientationEventListener.enable();
 
-    CameraCharacteristics characteristics = cameraManager.getCameraCharacteristics(cameraName);
+    mCameraCharacteristics = cameraManager.getCameraCharacteristics(cameraName);
     StreamConfigurationMap streamConfigurationMap =
-        characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+            mCameraCharacteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+
+    // Check if the flash is supported.
+    Boolean available = mCameraCharacteristics.get(CameraCharacteristics.FLASH_INFO_AVAILABLE);
+    mFlashSupported = available == null ? false : available;
     //noinspection ConstantConditions
-    sensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
+    sensorOrientation = mCameraCharacteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
     //noinspection ConstantConditions
     isFrontFacing =
-        characteristics.get(CameraCharacteristics.LENS_FACING) == CameraMetadata.LENS_FACING_FRONT;
+            mCameraCharacteristics.get(CameraCharacteristics.LENS_FACING) == CameraMetadata.LENS_FACING_FRONT;
     ResolutionPreset preset = ResolutionPreset.valueOf(resolutionPreset);
     recordingProfile =
         CameraUtils.getBestAvailableCamcorderProfileForResolutionPreset(cameraName, preset);
@@ -164,6 +207,7 @@ public class Camera {
                     previewSize.getWidth(), previewSize.getHeight(), ImageFormat.YUV_420_888, 2);
 
   }
+
   @SuppressLint("MissingPermission")
   public void open(@NonNull final Result result) throws CameraAccessException {
     preparePictureImageReader();
@@ -267,7 +311,45 @@ public class Camera {
       final CaptureRequest.Builder captureBuilder =
           cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
       captureBuilder.addTarget(pictureImageReader.getSurface());
+
+      captureBuilder.set(CaptureRequest.CONTROL_AF_MODE,
+              mPreviewRequestBuilder.get(CaptureRequest.CONTROL_AF_MODE));
+
+      if(mFlashSupported) {
+        switch (mFlash) {
+          case Constants.FLASH_OFF:
+            captureBuilder.set(CaptureRequest.CONTROL_AE_MODE,
+                    CaptureRequest.CONTROL_AE_MODE_ON);
+            captureBuilder.set(CaptureRequest.FLASH_MODE,
+                    CaptureRequest.FLASH_MODE_OFF);
+            break;
+          case Constants.FLASH_ON:
+            captureBuilder.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_OFF);
+            captureBuilder.set(
+                    CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON_ALWAYS_FLASH);
+            break;
+          case Constants.FLASH_TORCH:
+            captureBuilder.set(CaptureRequest.CONTROL_AE_MODE,
+                    CaptureRequest.CONTROL_AE_MODE_ON);
+            captureBuilder.set(CaptureRequest.FLASH_MODE,
+                    CaptureRequest.FLASH_MODE_TORCH);
+            break;
+          case Constants.FLASH_AUTO:
+            captureBuilder.set(CaptureRequest.CONTROL_AE_MODE,
+                    CaptureRequest.CONTROL_AE_MODE_ON_AUTO_FLASH);
+            break;
+          case Constants.FLASH_RED_EYE:
+            captureBuilder.set(CaptureRequest.CONTROL_AE_MODE,
+                    CaptureRequest.CONTROL_AE_MODE_ON_AUTO_FLASH);
+            break;
+        }
+      }
+
+      captureBuilder.set(
+              CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER,
+              CameraMetadata.CONTROL_AE_PRECAPTURE_TRIGGER_START);
       captureBuilder.set(CaptureRequest.JPEG_ORIENTATION, getMediaOrientation());
+
 
       mCaptureSession.capture(
           captureBuilder.build(),
@@ -309,19 +391,19 @@ public class Camera {
     closeCaptureSession();
 
     // Create a new capture builder.
-    captureRequestBuilder = cameraDevice.createCaptureRequest(templateType);
+    mPreviewRequestBuilder = cameraDevice.createCaptureRequest(templateType);
 
     // Build Flutter surface to render to
     SurfaceTexture surfaceTexture = flutterTexture.surfaceTexture();
     surfaceTexture.setDefaultBufferSize(previewSize.getWidth(), previewSize.getHeight());
     Surface flutterSurface = new Surface(surfaceTexture);
-    captureRequestBuilder.addTarget(flutterSurface);
+    mPreviewRequestBuilder.addTarget(flutterSurface);
 
     List<Surface> remainingSurfaces = Arrays.asList(surfaces);
     if (templateType != CameraDevice.TEMPLATE_PREVIEW) {
       // If it is not preview mode, add all surfaces as targets.
       for (Surface surface : remainingSurfaces) {
-        captureRequestBuilder.addTarget(surface);
+        mPreviewRequestBuilder.addTarget(surface);
       }
     }
 
@@ -336,10 +418,16 @@ public class Camera {
                     DartMessenger.EventType.ERROR, "The camera was closed during configuration.");
                 return;
               }
-              cameraCaptureSession = session;
-              captureRequestBuilder.set(
+              mCaptureSession = session;
+
+              updateAutoFocus();
+              updateFlash();
+
+              mPreviewRequestBuilder.set(
                   CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
-              cameraCaptureSession.setRepeatingRequest(captureRequestBuilder.build(), null, null);
+              mCaptureSession.setRepeatingRequest(mPreviewRequestBuilder.build(), null, null);
+
+
               if (onSuccessCallback != null) {
                 onSuccessCallback.run();
               }
@@ -361,6 +449,113 @@ public class Camera {
     surfaceList.addAll(remainingSurfaces);
     // Start the session
     cameraDevice.createCaptureSession(surfaceList, callback, null);
+  }
+
+  void setFlash(int flash) {
+    if (mFlash == flash) {
+      return;
+    }
+    int saved = mFlash;
+    mFlash = flash;
+    if (mPreviewRequestBuilder != null) {
+      updateFlash();
+      if (mCaptureSession != null) {
+        try {
+          mCaptureSession.setRepeatingRequest(mPreviewRequestBuilder.build(),
+                  null, null);
+        } catch (CameraAccessException e) {
+          mFlash = saved; // Revert
+        }
+      }
+    }
+  }
+
+
+  /**
+   * Updates the internal state of flash to {@link #mFlash}.
+   */
+  void updateFlash() {
+    if(mFlashSupported) {
+      switch (mFlash) {
+        case Constants.FLASH_OFF:
+          mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AE_MODE,
+                  CaptureRequest.CONTROL_AE_MODE_ON);
+          mPreviewRequestBuilder.set(CaptureRequest.FLASH_MODE,
+                  CaptureRequest.FLASH_MODE_OFF);
+          break;
+        case Constants.FLASH_ON:
+          mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AE_MODE,
+                  CaptureRequest.CONTROL_AE_MODE_ON_ALWAYS_FLASH);
+          mPreviewRequestBuilder.set(CaptureRequest.FLASH_MODE,
+                  CaptureRequest.FLASH_MODE_OFF);
+          break;
+        case Constants.FLASH_TORCH:
+          mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AE_MODE,
+                  CaptureRequest.CONTROL_AE_MODE_ON);
+          mPreviewRequestBuilder.set(CaptureRequest.FLASH_MODE,
+                  CaptureRequest.FLASH_MODE_TORCH);
+          break;
+        case Constants.FLASH_AUTO:
+          mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AE_MODE,
+                  CaptureRequest.CONTROL_AE_MODE_ON_AUTO_FLASH);
+          mPreviewRequestBuilder.set(CaptureRequest.FLASH_MODE,
+                  CaptureRequest.FLASH_MODE_OFF);
+          break;
+        case Constants.FLASH_RED_EYE:
+          mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AE_MODE,
+                  CaptureRequest.CONTROL_AE_MODE_ON_AUTO_FLASH_REDEYE);
+          mPreviewRequestBuilder.set(CaptureRequest.FLASH_MODE,
+                  CaptureRequest.FLASH_MODE_OFF);
+          break;
+      }
+      // Request Auto Exposure mode as recommended when you switch the Flash
+      // more information:
+      // https://developer.android.com/reference/android/hardware/camera2/CaptureRequest.html#FLASH_MODE
+
+
+    }
+  }
+
+  //NEW THINGIES
+  void updateAutoFocus() {
+    if (mAutoFocus) {
+      int[] modes = mCameraCharacteristics.get(
+              CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES);
+      // Auto focus is not supported
+      if (modes == null || modes.length == 0 ||
+              (modes.length == 1 && modes[0] == CameraCharacteristics.CONTROL_AF_MODE_OFF)) {
+        mAutoFocus = false;
+        mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE,
+                CaptureRequest.CONTROL_AF_MODE_OFF);
+      } else {
+        mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE,
+                CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
+      }
+    } else {
+      mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE,
+              CaptureRequest.CONTROL_AF_MODE_OFF);
+    }
+  }
+
+  void setAutoFocus(boolean autoFocus) {
+    if (mAutoFocus == autoFocus) {
+      return;
+    }
+    Log.d( "AUTO FOCUD", "setAutoFocus");
+
+    mAutoFocus = autoFocus;
+    if (mPreviewRequestBuilder != null) {
+      updateAutoFocus();
+      if (mCaptureSession != null) {
+        try {
+          //mCaptureSession.setRepeatingRequest(mPreviewRequestBuilder.build(), mCaptureCallback, null);
+          mCaptureSession.setRepeatingRequest(mPreviewRequestBuilder.build(), null, null);
+
+        } catch (CameraAccessException e) {
+          mAutoFocus = !mAutoFocus; // Revert
+        }
+      }
+    }
   }
 
   public void startVideoRecording(String filePath, Result result) {

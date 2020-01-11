@@ -43,6 +43,7 @@ class _CameraExampleHomeState extends State<CameraExampleHome>
   VideoPlayerController videoController;
   VoidCallback videoPlayerListener;
   bool enableAudio = true;
+  FlashMode flashMode = FlashMode.off;
 
   @override
   void initState() {
@@ -238,6 +239,8 @@ class _CameraExampleHomeState extends State<CameraExampleHome>
               controller.value.isInitialized)
                ? toogleAutoFocus : null,
         ),
+        _flashButton(),
+
         IconButton(
           icon: const Icon(Icons.stop),
           color: Colors.red,
@@ -250,7 +253,44 @@ class _CameraExampleHomeState extends State<CameraExampleHome>
       ],
     );
   }
+  /// Flash Toggle Button
+  Widget _flashButton() {
+    IconData iconData = Icons.flash_off;
+    Color color = Colors.black;
+    if (flashMode == FlashMode.alwaysFlash) {
+      iconData = Icons.flash_on;
+      color = Colors.blue;
+    } else if (flashMode == FlashMode.autoFlash) {
+      iconData = Icons.flash_auto;
+      color = Colors.red;
+    }
+    return IconButton(
+      icon: Icon(iconData),
+      color: color,
+      onPressed: controller != null && controller.value.isInitialized
+          ? _onFlashButtonPressed
+          : null,
+    );
+  }
+  /// Toggle Flash
+  Future<void> _onFlashButtonPressed() async {
+    bool hasFlash = false;
+      if (flashMode == FlashMode.off || flashMode == FlashMode.torch) {
+        // Turn on the flash for capture
+        flashMode = FlashMode.alwaysFlash;
+      } else if (flashMode == FlashMode.alwaysFlash) {
+        // Turn on the flash for capture if needed
+        flashMode = FlashMode.autoFlash;
+      } else {
+        // Turn off the flash
+        flashMode = FlashMode.off;
+      }
+      // Apply the new mode
+      await controller.setFlashMode(flashMode);
 
+    // Change UI State
+    setState(() {});
+  }
   /// Display a row of toggle to select the camera (or a message if no camera is available).
   Widget _cameraTogglesRowWidget() {
     final List<Widget> toggles = <Widget>[];
@@ -353,6 +393,7 @@ class _CameraExampleHomeState extends State<CameraExampleHome>
       showInSnackBar('Video recording resumed');
     });
   }
+
 
   void toogleAutoFocus() {
     controller.setAutoFocus(!controller.value.autoFocusEnabled);

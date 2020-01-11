@@ -15,6 +15,17 @@ final MethodChannel _channel = const MethodChannel('plugins.flutter.io/camera');
 
 enum CameraLensDirection { front, back, external }
 
+enum FlashMode {
+  /// The flash is disabled
+  off,
+  /// Fire flash for this capture
+  alwaysFlash,
+  /// Flash light is continuously ON
+  torch,
+  /// Fire the flash for this capture if needed
+  autoFlash,
+}
+
 /// Affect the quality of video recording and image capture:
 ///
 /// If a preset is not available on the camera being used a preset of lower quality will be selected automatically.
@@ -159,6 +170,7 @@ class CameraValue {
     this.isTakingPicture,
     this.isStreamingImages,
     this.autoFocusEnabled,
+    this.flashMode,
     bool isRecordingPaused,
   }) : _isRecordingPaused = isRecordingPaused;
 
@@ -169,7 +181,8 @@ class CameraValue {
       isTakingPicture: false,
       isStreamingImages: false,
       isRecordingPaused: false,
-      autoFocusEnabled: true
+      autoFocusEnabled: true,
+      flashMode: FlashMode.off
   );
 
   /// True after [CameraController.initialize] has completed successfully.
@@ -180,6 +193,10 @@ class CameraValue {
 
   /// True when autofocus is on.
   final bool autoFocusEnabled;
+
+  /// FlashMode
+  final FlashMode flashMode;
+
 
   /// True when the camera is recording (not the same as previewing).
   final bool isRecordingVideo;
@@ -214,7 +231,8 @@ class CameraValue {
     String errorDescription,
     Size previewSize,
     bool isRecordingPaused,
-    bool autoFocusEnabled
+    bool autoFocusEnabled,
+    FlashMode flashMode
   }) {
     return CameraValue(
       isInitialized: isInitialized ?? this.isInitialized,
@@ -225,6 +243,7 @@ class CameraValue {
       isStreamingImages: isStreamingImages ?? this.isStreamingImages,
       isRecordingPaused: isRecordingPaused ?? _isRecordingPaused,
       autoFocusEnabled: autoFocusEnabled ?? this.autoFocusEnabled,
+      flashMode: flashMode ?? this.flashMode,
     );
   }
 
@@ -252,6 +271,7 @@ class CameraController extends ValueNotifier<CameraValue> {
       this.resolutionPreset, {
         this.enableAudio = true,
         this.autoFocusEnabled = true,
+        this.flashMode = FlashMode.off,
       }) : super(const CameraValue.uninitialized());
 
   final CameraDescription description;
@@ -262,6 +282,8 @@ class CameraController extends ValueNotifier<CameraValue> {
 
   ///Whether the auttoFocus is enabled
   final bool autoFocusEnabled;
+  final FlashMode flashMode;
+
   int _textureId;
   bool _isDisposed = false;
   StreamSubscription<dynamic> _eventSubscription;
@@ -285,6 +307,7 @@ class CameraController extends ValueNotifier<CameraValue> {
           'resolutionPreset': serializeResolutionPreset(resolutionPreset),
           'enableAudio': enableAudio,
           'autoFocusEnabled': autoFocusEnabled,
+          'flashMode': flashMode.index,
         },
       );
       _textureId = reply['textureId'];
@@ -586,6 +609,18 @@ class CameraController extends ValueNotifier<CameraValue> {
       await _channel.invokeMethod<void>(
         'setAutoFocus',
         <String, dynamic>{'autoFocusValue': newValue},
+      );
+    } on PlatformException catch (e) {
+      throw CameraException(e.code, e.message);
+    }
+  }
+  // Set setFlashMode on camera
+  Future<void> setFlashMode(FlashMode flashMode) async {
+    value = value.copyWith(flashMode: flashMode);
+    try {
+      await _channel.invokeMethod<void>(
+        'setFlashMode',
+        <String, dynamic>{'flashMode': flashMode.index},
       );
     } on PlatformException catch (e) {
       throw CameraException(e.code, e.message);
