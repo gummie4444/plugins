@@ -230,6 +230,15 @@ class _CameraExampleHomeState extends State<CameraExampleHome>
               : null,
         ),
         IconButton(
+          icon: controller != null && controller.value.autoFocusEnabled
+              ? Icon(Icons.access_alarm)
+              : Icon(Icons.access_alarms),
+          color: Colors.blue,
+          onPressed: (controller != null &&
+              controller.value.isInitialized)
+               ? toogleAutoFocus : null,
+        ),
+        IconButton(
           icon: const Icon(Icons.stop),
           color: Colors.red,
           onPressed: controller != null &&
@@ -343,6 +352,12 @@ class _CameraExampleHomeState extends State<CameraExampleHome>
       if (mounted) setState(() {});
       showInSnackBar('Video recording resumed');
     });
+  }
+
+  void toogleAutoFocus() {
+    controller.setAutoFocus(!controller.value.autoFocusEnabled);
+    showInSnackBar('Toogle auto focus');
+
   }
 
   Future<String> startVideoRecording() async {

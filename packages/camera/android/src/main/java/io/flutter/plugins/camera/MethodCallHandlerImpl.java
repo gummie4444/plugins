@@ -2,6 +2,8 @@ package io.flutter.plugins.camera;
 
 import android.app.Activity;
 import android.hardware.camera2.CameraAccessException;
+import android.util.Log;
+
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import io.flutter.plugin.common.BinaryMessenger;
@@ -51,6 +53,8 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
         break;
       case "initialize":
         {
+
+          //TODO: init with more config
           if (camera != null) {
             camera.close();
           }
@@ -123,8 +127,20 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
           }
           break;
         }
+
+      case "setAutoFocus":
+        {
+          try {
+            camera.setAutoFocus((boolean) call.argument("autoFocusValue"));
+            //result.success(null);
+          } catch (Exception e){
+            handleException(e, result);
+          }
+          break;
+        }
       case "dispose":
         {
+
           if (camera != null) {
             camera.dispose();
           }
@@ -145,6 +161,8 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
     String cameraName = call.argument("cameraName");
     String resolutionPreset = call.argument("resolutionPreset");
     boolean enableAudio = call.argument("enableAudio");
+    boolean autoFocusEnabled = call.argument("autoFocusEnabled");
+
     TextureRegistry.SurfaceTextureEntry flutterSurfaceTexture =
         textureRegistry.createSurfaceTexture();
     DartMessenger dartMessenger = new DartMessenger(messenger, flutterSurfaceTexture.id());
@@ -155,7 +173,7 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
             dartMessenger,
             cameraName,
             resolutionPreset,
-            enableAudio);
+            enableAudio, autoFocusEnabled);
 
     camera.open(result);
   }

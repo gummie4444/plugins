@@ -158,23 +158,28 @@ class CameraValue {
     this.isRecordingVideo,
     this.isTakingPicture,
     this.isStreamingImages,
+    this.autoFocusEnabled,
     bool isRecordingPaused,
   }) : _isRecordingPaused = isRecordingPaused;
 
   const CameraValue.uninitialized()
       : this(
-          isInitialized: false,
-          isRecordingVideo: false,
-          isTakingPicture: false,
-          isStreamingImages: false,
-          isRecordingPaused: false,
-        );
+      isInitialized: false,
+      isRecordingVideo: false,
+      isTakingPicture: false,
+      isStreamingImages: false,
+      isRecordingPaused: false,
+      autoFocusEnabled: true
+  );
 
   /// True after [CameraController.initialize] has completed successfully.
   final bool isInitialized;
 
   /// True when a picture capture request has been sent but as not yet returned.
   final bool isTakingPicture;
+
+  /// True when autofocus is on.
+  final bool autoFocusEnabled;
 
   /// True when the camera is recording (not the same as previewing).
   final bool isRecordingVideo;
@@ -209,6 +214,7 @@ class CameraValue {
     String errorDescription,
     Size previewSize,
     bool isRecordingPaused,
+    bool autoFocusEnabled
   }) {
     return CameraValue(
       isInitialized: isInitialized ?? this.isInitialized,
@@ -218,6 +224,7 @@ class CameraValue {
       isTakingPicture: isTakingPicture ?? this.isTakingPicture,
       isStreamingImages: isStreamingImages ?? this.isStreamingImages,
       isRecordingPaused: isRecordingPaused ?? _isRecordingPaused,
+      autoFocusEnabled: autoFocusEnabled ?? this.autoFocusEnabled,
     );
   }
 
@@ -241,11 +248,11 @@ class CameraValue {
 ///
 /// To show the camera preview on the screen use a [CameraPreview] widget.
 class CameraController extends ValueNotifier<CameraValue> {
-  CameraController(
-    this.description,
-    this.resolutionPreset, {
-    this.enableAudio = true,
-  }) : super(const CameraValue.uninitialized());
+  CameraController(this.description,
+      this.resolutionPreset, {
+        this.enableAudio = true,
+        this.autoFocusEnabled = true,
+      }) : super(const CameraValue.uninitialized());
 
   final CameraDescription description;
   final ResolutionPreset resolutionPreset;
@@ -253,6 +260,8 @@ class CameraController extends ValueNotifier<CameraValue> {
   /// Whether to include audio when recording a video.
   final bool enableAudio;
 
+  ///Whether the auttoFocus is enabled
+  final bool autoFocusEnabled;
   int _textureId;
   bool _isDisposed = false;
   StreamSubscription<dynamic> _eventSubscription;
@@ -269,12 +278,13 @@ class CameraController extends ValueNotifier<CameraValue> {
     try {
       _creatingCompleter = Completer<void>();
       final Map<String, dynamic> reply =
-          await _channel.invokeMapMethod<String, dynamic>(
+      await _channel.invokeMapMethod<String, dynamic>(
         'initialize',
         <String, dynamic>{
           'cameraName': description.name,
           'resolutionPreset': serializeResolutionPreset(resolutionPreset),
           'enableAudio': enableAudio,
+          'autoFocusEnabled': autoFocusEnabled,
         },
       );
       _textureId = reply['textureId'];
@@ -405,13 +415,13 @@ class CameraController extends ValueNotifier<CameraValue> {
       throw CameraException(e.code, e.message);
     }
     const EventChannel cameraEventChannel =
-        EventChannel('plugins.flutter.io/camera/imageStream');
+    EventChannel('plugins.flutter.io/camera/imageStream');
     _imageStreamSubscription =
         cameraEventChannel.receiveBroadcastStream().listen(
-      (dynamic imageData) {
-        onAvailable(CameraImage._fromPlatformData(imageData));
-      },
-    );
+              (dynamic imageData) {
+            onAvailable(CameraImage._fromPlatformData(imageData));
+          },
+        );
   }
 
   /// Stop streaming images from platform camera.
@@ -563,6 +573,19 @@ class CameraController extends ValueNotifier<CameraValue> {
       await _channel.invokeMethod<void>(
         'resumeVideoRecording',
         <String, dynamic>{'textureId': _textureId},
+      );
+    } on PlatformException catch (e) {
+      throw CameraException(e.code, e.message);
+    }
+  }
+
+  // Set autoFocusEnabled on camera
+  Future<void> setAutoFocus(bool newValue) async {
+    value = value.copyWith(autoFocusEnabled: newValue);
+    try {
+      await _channel.invokeMethod<void>(
+        'setAutoFocus',
+        <String, dynamic>{'autoFocusValue': newValue},
       );
     } on PlatformException catch (e) {
       throw CameraException(e.code, e.message);

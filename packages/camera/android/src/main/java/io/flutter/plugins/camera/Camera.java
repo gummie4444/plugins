@@ -22,6 +22,7 @@ import android.media.Image;
 import android.media.ImageReader;
 import android.media.MediaRecorder;
 import android.os.Build;
+import android.util.Log;
 import android.util.Size;
 import android.view.OrientationEventListener;
 import android.view.Surface;
@@ -51,7 +52,7 @@ public class Camera {
   private final boolean enableAudio;
 
   private CameraDevice cameraDevice;
-  private CameraCaptureSession cameraCaptureSession;
+  private CameraCaptureSession mCaptureSession;
   private ImageReader pictureImageReader;
   private ImageReader imageStreamReader;
   private DartMessenger dartMessenger;
@@ -77,7 +78,8 @@ public class Camera {
       final DartMessenger dartMessenger,
       final String cameraName,
       final String resolutionPreset,
-      final boolean enableAudio)
+      final boolean enableAudio,
+      final boolean autoFocusEnabled)
       throws CameraAccessException {
     if (activity == null) {
       throw new IllegalStateException("No activity available!");
@@ -88,6 +90,8 @@ public class Camera {
     this.flutterTexture = flutterTexture;
     this.dartMessenger = dartMessenger;
     this.cameraManager = (CameraManager) activity.getSystemService(Context.CAMERA_SERVICE);
+    this.mAutoFocus = autoFocusEnabled;
+
     orientationEventListener =
         new OrientationEventListener(activity.getApplicationContext()) {
           @Override
@@ -265,7 +269,7 @@ public class Camera {
       captureBuilder.addTarget(pictureImageReader.getSurface());
       captureBuilder.set(CaptureRequest.JPEG_ORIENTATION, getMediaOrientation());
 
-      cameraCaptureSession.capture(
+      mCaptureSession.capture(
           captureBuilder.build(),
           new CameraCaptureSession.CaptureCallback() {
             @Override
@@ -491,9 +495,9 @@ public class Camera {
   }
 
   private void closeCaptureSession() {
-    if (cameraCaptureSession != null) {
-      cameraCaptureSession.close();
-      cameraCaptureSession = null;
+    if (mCaptureSession != null) {
+      mCaptureSession.close();
+      mCaptureSession = null;
     }
   }
 
