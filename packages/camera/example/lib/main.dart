@@ -88,7 +88,12 @@ class _CameraExampleHomeState extends State<CameraExampleHome>
               child: Padding(
                 padding: const EdgeInsets.all(1.0),
                 child: Center(
-                  child: _cameraPreviewWidget(),
+                  child: ZoomableWidget(child:_cameraPreviewWidget(), onZoom: (zoom){
+                    print('zoom');
+                    if(zoom < 11) {
+                      controller.zoom(zoom);
+                    }
+                  })
                 ),
               ),
               decoration: BoxDecoration(
@@ -249,7 +254,8 @@ class _CameraExampleHomeState extends State<CameraExampleHome>
                   controller.value.isRecordingVideo
               ? onStopButtonPressed
               : null,
-        )
+        ),
+
       ],
     );
   }
@@ -379,6 +385,7 @@ class _CameraExampleHomeState extends State<CameraExampleHome>
       showInSnackBar('Video recorded to: $videoPath');
     });
   }
+
 
   void onPauseButtonPressed() {
     pauseVideoRecording().then((_) {
@@ -541,4 +548,52 @@ Future<void> main() async {
     logError(e.code, e.description);
   }
   runApp(CameraApp());
+}
+
+//Zoomer this will be a seprate widget
+class ZoomableWidget extends StatefulWidget {
+  final Widget child;
+  final Function onZoom;
+
+  const ZoomableWidget({Key key, this.child, this.onZoom}) : super(key: key);
+
+  @override
+  _ZoomableWidgetState createState() => _ZoomableWidgetState();
+}
+
+class _ZoomableWidgetState extends State<ZoomableWidget> {
+  Matrix4 matrix = Matrix4.identity();
+  double zoom = 1;
+  double prevZoom = 1;
+
+  @override
+  Widget build(BuildContext context) {
+
+
+    return GestureDetector(
+      onScaleStart: (scaleDetails) {
+        print('scalStart');
+        setState(() => prevZoom = zoom);
+        //print(scaleDetails);
+        },
+      onScaleUpdate: (ScaleUpdateDetails scaleDetails) {
+         var newZoom = (prevZoom * scaleDetails.scale);
+
+        if(newZoom >= 1) {
+          if(newZoom > 10){
+            return;
+          }
+          setState(() => zoom = newZoom);
+        }
+        print(zoom);
+
+        widget.onZoom(zoom);
+      },
+      onScaleEnd: (scaleDetails){
+        print('end');
+        //print(scaleDetails);
+      },
+      child: widget.child,
+    );
+  }
 }

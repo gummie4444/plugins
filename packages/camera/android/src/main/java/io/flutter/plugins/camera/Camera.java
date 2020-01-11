@@ -7,6 +7,7 @@ import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Context;
 import android.graphics.ImageFormat;
+import android.graphics.Rect;
 import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
@@ -16,8 +17,6 @@ import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CameraMetadata;
 import android.hardware.camera2.CaptureFailure;
 import android.hardware.camera2.CaptureRequest;
-import android.hardware.camera2.CaptureResult;
-import android.hardware.camera2.TotalCaptureResult;
 import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.CamcorderProfile;
 import android.media.Image;
@@ -91,7 +90,8 @@ public class Camera {
   private int currentOrientation = ORIENTATION_UNKNOWN;
 
   private static final String TAG = "Camera2BasicFragment";
-
+  public float zoomLevel = 1f;
+  private Rect zoom;
 
   private boolean mAutoFocus;
   private int mFlash = Constants.FLASH_OFF;
@@ -750,6 +750,43 @@ public class Camera {
     close();
     flutterTexture.release();
     orientationEventListener.disable();
+  }
+
+
+  public void zoom(double step) throws CameraAccessException {
+    changeZoom((float) step);
+  }
+
+  private void changeZoom(float step) throws CameraAccessException {
+    calculateZoom(step);
+    setScalerCropRegion(mPreviewRequestBuilder, zoom);
+    mCaptureSession.setRepeatingRequest(mPreviewRequestBuilder.build(), null, null);
+  }
+
+  private void calculateZoom(float step) {
+
+    zoomLevel = step;
+
+    if (zoomLevel < 1f) {
+      zoomLevel = 1f;
+      return;
+    }
+
+    Rect rect = mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
+
+    float ratio = (float) 1 / zoomLevel;
+    int croppedWidth = rect.width() - Math.round((float) rect.width() * ratio);
+    int croppedHeight = rect.height() - Math.round((float) rect.height() * ratio);
+    zoom =
+        new Rect(
+            croppedWidth / 2,
+            croppedHeight / 2,
+            rect.width() - croppedWidth / 2,
+            rect.height() - croppedHeight / 2);
+  }
+
+  private void setScalerCropRegion(CaptureRequest.Builder captureRequestBuilder, Rect zoom) {
+    captureRequestBuilder.set(CaptureRequest.SCALER_CROP_REGION, zoom);
   }
 
   private int getMediaOrientation() {
