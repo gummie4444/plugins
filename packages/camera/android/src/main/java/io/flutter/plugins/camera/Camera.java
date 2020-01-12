@@ -412,6 +412,7 @@ public class Camera {
 
     @Override
     public void onReady() {
+      Log.d(TAG, "captureStillPicture");
       captureStillPicture(this.filePath, this.getResult());
     }
 
@@ -425,6 +426,8 @@ public class Camera {
   void unlockFocus() {
     mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER,
             CaptureRequest.CONTROL_AF_TRIGGER_CANCEL);
+    Log.d(TAG, "UNLOCK FOCUS");
+
     try {
       mCaptureSession.capture(mPreviewRequestBuilder.build(), mCaptureCallback, null);
       updateAutoFocus();
@@ -459,10 +462,13 @@ public class Camera {
   public void takePicture(String filePath, @NonNull final Result result){
     mCaptureCallback.setFilePath(filePath);
     mCaptureCallback.setResult(result);
+    Log.e(TAG, "takePicture");
 
     if (mAutoFocus) {
+      Log.e(TAG, "takePicture-mAutoFocus");
       lockFocus();
     } else {
+      Log.e(TAG, "takePicture-noAutoFocus");
       captureStillPicture(filePath,result);
     }
   }
@@ -523,10 +529,6 @@ public class Camera {
         }
       }
 
-      captureBuilder.set(
-              CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER,
-              CameraMetadata.CONTROL_AE_PRECAPTURE_TRIGGER_START);
-
       captureBuilder.set(CaptureRequest.JPEG_ORIENTATION, getMediaOrientation());
 
 
@@ -537,8 +539,8 @@ public class Camera {
               public void onCaptureCompleted(@NonNull CameraCaptureSession session,
                                              @NonNull CaptureRequest request,
                                              @NonNull TotalCaptureResult result) {
+                Log.d(TAG, "ONCAPTURECOMPLETED");
                       unlockFocus();
-
               }
             @Override
             public void onCaptureFailed(
@@ -612,7 +614,7 @@ public class Camera {
 
               mPreviewRequestBuilder.set(
                   CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
-              mCaptureSession.setRepeatingRequest(mPreviewRequestBuilder.build(), null, null);
+              mCaptureSession.setRepeatingRequest(mPreviewRequestBuilder.build(), mCaptureCallback, null);
 
 
               if (onSuccessCallback != null) {
@@ -682,7 +684,7 @@ public class Camera {
       if (mCaptureSession != null) {
         try {
           mCaptureSession.setRepeatingRequest(mPreviewRequestBuilder.build(),
-                  null, null);
+                  mCaptureCallback, null);
         } catch (CameraAccessException e) {
           mFlash = saved; // Revert
         }
@@ -764,7 +766,7 @@ public class Camera {
       if (mCaptureSession != null) {
         try {
           //mCaptureSession.setRepeatingRequest(mPreviewRequestBuilder.build(), mCaptureCallback, null);
-          mCaptureSession.setRepeatingRequest(mPreviewRequestBuilder.build(), null, null);
+          mCaptureSession.setRepeatingRequest(mPreviewRequestBuilder.build(), mCaptureCallback, null);
 
         } catch (CameraAccessException e) {
           mAutoFocus = !mAutoFocus; // Revert
@@ -956,6 +958,7 @@ public class Camera {
         final int y = (int)(offsetY * (float)sensorArraySize.width());
 
 
+
         final int halfTouchWidth = 150; //(int)motionEvent.getTouchMajor(); //TODO: this doesn't represent actual touch size in pixel. Values range in [3, 10]...
         final int halfTouchHeight = 150; //(int)motionEvent.getTouchMinor();
         MeteringRectangle focusAreaTouch = new MeteringRectangle(Math.max(x - halfTouchWidth, 0),
@@ -973,7 +976,9 @@ public class Camera {
                 mManualFocusEngaged = false;
                 Log.i("baba", "babababa");
                 if (request.getTag() == "FOCUS_TAG") {
-                    //the focus trigger is complete -
+                  Log.i("baba", "FOCUS_TAG");
+
+                  //the focus trigger is complete -
                     //resume repeating (preview surface will get frames), clear AF trigger
                     mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER, null);
                     try {
@@ -996,6 +1001,7 @@ public class Camera {
         try {
             mCaptureSession.stopRepeating();
         } catch (CameraAccessException e) {
+          Log.d(TAG, "BABAB", e);
             Log.e(TAG, "Failed to manual focus.", e);
         }
 

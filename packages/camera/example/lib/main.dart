@@ -91,7 +91,7 @@ class _CameraExampleHomeState extends State<CameraExampleHome>
                     child: ZoomableWidget(
                         child: _cameraPreviewWidget(),
                         onTapUp: (scaledPoint) {
-                          controller.setPointOfInterest(scaledPoint);
+                          //controller.setPointOfInterest(scaledPoint);
                         },
                         onZoom: (zoom) {
                           print('zoom');
@@ -142,15 +142,7 @@ class _CameraExampleHomeState extends State<CameraExampleHome>
     } else {
       return AspectRatio(
         aspectRatio: controller.value.aspectRatio,
-        child: GestureDetector(
-            child: CameraPreview(controller),
-            onTapUp: (TapUpDetails det) {
-              final RenderBox box = context.findRenderObject();
-              final Offset localPoint = box.globalToLocal(det.globalPosition);
-              final Offset scaledPoint =
-                  localPoint.scale(1 / box.size.width, 1 / box.size.height);
-              controller.setPointOfInterest(scaledPoint);
-            }),
+        child: CameraPreview(controller),
       );
     }
   }
@@ -577,40 +569,72 @@ class _ZoomableWidgetState extends State<ZoomableWidget> {
   Matrix4 matrix = Matrix4.identity();
   double zoom = 1;
   double prevZoom = 1;
+  bool showZoom = false;
+  Timer t1;
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onScaleStart: (scaleDetails) {
-        print('scalStart');
-        setState(() => prevZoom = zoom);
-        //print(scaleDetails);
-      },
-      onScaleUpdate: (ScaleUpdateDetails scaleDetails) {
-        var newZoom = (prevZoom * scaleDetails.scale);
+        onScaleStart: (scaleDetails) {
+          print('scalStart');
+          setState(() => prevZoom = zoom);
+          //print(scaleDetails);
+        },
+        onScaleUpdate: (ScaleUpdateDetails scaleDetails) {
+          var newZoom = (prevZoom * scaleDetails.scale);
 
-        if (newZoom >= 1) {
-          if (newZoom > 10) {
-            return;
+          if (newZoom >= 1) {
+            if (newZoom > 10) {
+              return;
+            }
+            setState(() {
+              showZoom = true;
+              zoom = newZoom;
+            });
+
+            if (t1 != null) {
+              t1.cancel();
+            }
+
+            t1 = Timer(Duration(milliseconds: 2000), () {
+              setState(() {
+                showZoom = false;
+              });
+            });
           }
-          setState(() => zoom = newZoom);
-        }
-        print(zoom);
-
-        widget.onZoom(zoom);
-      },
-      onScaleEnd: (scaleDetails) {
-        print('end');
-        //print(scaleDetails);
-      },
-      onTapUp: (TapUpDetails det) {
-        final RenderBox box = context.findRenderObject();
-        final Offset localPoint = box.globalToLocal(det.globalPosition);
-        final Offset scaledPoint =
-            localPoint.scale(1 / box.size.width, 1 / box.size.height);
-            widget.onTapUp(scaledPoint);
-      },
-      child: widget.child,
-    );
+          widget.onZoom(zoom);
+        },
+        onScaleEnd: (scaleDetails) {
+          print('end');
+          //print(scaleDetails);
+        },
+        onTapUp: (TapUpDetails det) {
+          final RenderBox box = context.findRenderObject();
+          final Offset localPoint = box.globalToLocal(det.globalPosition);
+          final Offset scaledPoint =
+              localPoint.scale(1 / box.size.width, 1 / box.size.height);
+          // TODO IMPLIMENT
+          // widget.onTapUp(scaledPoint);
+        },
+        child: Stack(children: [
+          Column(
+            children: <Widget>[
+              Container(
+                child: Expanded(
+                  child: widget.child,
+                ),
+              ),
+            ],
+          ),
+          Visibility(
+            visible: showZoom, //Default is true,
+            child: Positioned(
+              bottom: 50,
+              child: Slider(value: zoom, max: 10, min: 1),
+            ),
+            //maintainSize: bool. When true this is equivalent to invisible;
+            //replacement: Widget. Defaults to Sizedbox.shrink, 0x0
+          )
+        ]));
   }
 }
