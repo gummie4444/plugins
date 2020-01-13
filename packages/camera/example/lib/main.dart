@@ -533,7 +533,11 @@ class _CameraExampleHomeState extends State<CameraExampleHome>
 class CameraApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return
+      MaterialApp(
+        theme: ThemeData(
+          accentTextTheme: TextTheme(body2: TextStyle(color: Colors.white)),
+        ),
       home: CameraExampleHome(),
     );
   }
@@ -572,8 +576,33 @@ class _ZoomableWidgetState extends State<ZoomableWidget> {
   bool showZoom = false;
   Timer t1;
 
+  bool handleZoom(newZoom){
+    if (newZoom >= 1) {
+      if (newZoom > 10) {
+        return false;
+      }
+      setState(() {
+        showZoom = true;
+        zoom = newZoom;
+      });
+
+      if (t1 != null) {
+        t1.cancel();
+      }
+
+      t1 = Timer(Duration(milliseconds: 2000), () {
+        setState(() {
+          showZoom = false;
+        });
+      });
+    }
+    widget.onZoom(zoom);
+    return true;
+
+  }
   @override
   Widget build(BuildContext context) {
+
     return GestureDetector(
         onScaleStart: (scaleDetails) {
           print('scalStart');
@@ -583,26 +612,7 @@ class _ZoomableWidgetState extends State<ZoomableWidget> {
         onScaleUpdate: (ScaleUpdateDetails scaleDetails) {
           var newZoom = (prevZoom * scaleDetails.scale);
 
-          if (newZoom >= 1) {
-            if (newZoom > 10) {
-              return;
-            }
-            setState(() {
-              showZoom = true;
-              zoom = newZoom;
-            });
-
-            if (t1 != null) {
-              t1.cancel();
-            }
-
-            t1 = Timer(Duration(milliseconds: 2000), () {
-              setState(() {
-                showZoom = false;
-              });
-            });
-          }
-          widget.onZoom(zoom);
+          handleZoom(newZoom);
         },
         onScaleEnd: (scaleDetails) {
           print('end');
@@ -628,9 +638,47 @@ class _ZoomableWidgetState extends State<ZoomableWidget> {
           ),
           Visibility(
             visible: showZoom, //Default is true,
-            child: Positioned(
-              bottom: 50,
-              child: Slider(value: zoom, max: 10, min: 1),
+            child: Positioned.fill(
+              child: Container(
+                  child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                mainAxisSize: MainAxisSize.max,
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: <Widget>[
+                  Align(
+                      alignment: Alignment.bottomCenter,
+                      child:
+                      SliderTheme(
+                        data: SliderTheme.of(context).copyWith(
+                          valueIndicatorTextStyle: TextStyle(
+                              color: Colors.amber, letterSpacing: 2.0, fontSize: 30),
+                          valueIndicatorColor: Colors.blue,
+                          // This is what you are asking for
+                          inactiveTrackColor: Color(0xFF8D8E98),
+                          // Custom Gray Color
+                          activeTrackColor: Colors.white,
+                          thumbColor: Colors.red,
+                          overlayColor: Color(0x29EB1555),
+                          // Custom Thumb overlay Color
+                          thumbShape:
+                          RoundSliderThumbShape(enabledThumbRadius: 12.0),
+                          overlayShape:
+                          RoundSliderOverlayShape(overlayRadius: 20.0),
+
+                        ),
+                        child: Slider(
+                          value: zoom,
+                          onChanged: (double newValue) {
+                            handleZoom(newValue);
+                          },
+                          label: "$zoom",
+                          min: 1,
+                          max: 10,
+                        ),
+                      ),
+                  ),
+                ],
+              )),
             ),
             //maintainSize: bool. When true this is equivalent to invisible;
             //replacement: Widget. Defaults to Sizedbox.shrink, 0x0
