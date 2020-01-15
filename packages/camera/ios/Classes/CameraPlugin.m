@@ -164,6 +164,7 @@ static ResolutionPreset getResolutionPresetForString(NSString *preset) {
 @property BOOL enableAudio;
 @property int flashMode;
 @property BOOL enableAutoExposure;
+@property BOOL autoFocusEnabled;
 @property(nonatomic) FlutterEventChannel *eventChannel;
 @property(nonatomic) FLTImageStreamHandler *imageStreamHandler;
 @property(nonatomic) FlutterEventSink eventSink;
@@ -198,6 +199,7 @@ static ResolutionPreset getResolutionPresetForString(NSString *preset) {
                   resolutionPreset:(NSString *)resolutionPreset
                        enableAudio:(BOOL)enableAudio
                         flashMode:(int)flashMode
+                  autoFocusEnabled:(int)autoFocusEnabled
                         enableAutoExposure:(BOOL)enableAutoExposure
                      dispatchQueue:(dispatch_queue_t)dispatchQueue
                              error:(NSError **)error;
@@ -222,6 +224,7 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
                   resolutionPreset:(NSString *)resolutionPreset
                        enableAudio:(BOOL)enableAudio
                        flashMode:(int)flashMode
+                    autoFocusEnabled:(int)autoFocusEnabled
                        enableAutoExposure:(BOOL)enableAutoExposure
                      dispatchQueue:(dispatch_queue_t)dispatchQueue
                              error:(NSError **)error {
@@ -272,6 +275,10 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
   if (enableAutoExposure) {
     [self setAutoExposureMode:enableAutoExposure];
   }
+ 
+    if(autoFocusEnabled){
+        [self setAutoFocus:autoFocusEnabled];
+    }
 
   [self setCaptureSessionPreset:_resolutionPreset];
   return self;
@@ -713,6 +720,32 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
   [_captureDevice unlockForConfiguration];
 }
 
+- (void)setAutoFocus:(BOOL)enable
+{
+
+    NSError *error = nil;
+
+    if(_captureDevice == nil){
+        return;
+    }
+
+    if (![_captureDevice lockForConfiguration:&error]) {
+        return;
+    }
+
+    if(enable){
+        if ([_captureDevice isFocusModeSupported:AVCaptureFocusModeContinuousAutoFocus]) {
+            if ([_captureDevice lockForConfiguration:&error]) {
+                [_captureDevice setFocusMode:AVCaptureFocusModeContinuousAutoFocus];
+            } else {
+
+            }
+        }
+    }
+
+    [_captureDevice unlockForConfiguration];
+}
+
 - (void)zoom:(double)zoom {
 
     NSError *error = nil;
@@ -903,11 +936,14 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
     NSNumber *enableAudio = call.arguments[@"enableAudio"];
     NSNumber *flashMode = call.arguments[@"flashMode"];
     NSNumber *enableAutoExposure = call.arguments[@"enableAutoExposure"];
+    NSNumber *autoFocusEnabled = call.arguments[@"autoFocusEnabled"];
+
     NSError *error;
     FLTCam *cam = [[FLTCam alloc] initWithCameraName:cameraName
                                     resolutionPreset:resolutionPreset
                                          enableAudio:[enableAudio boolValue]
                                          flashMode:[flashMode intValue]
+                                    autoFocusEnabled:[autoFocusEnabled boolValue]
                                         enableAutoExposure:[enableAutoExposure boolValue]
                                        dispatchQueue:_dispatchQueue
                                                error:&error];
