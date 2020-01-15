@@ -27,6 +27,7 @@ import android.media.ImageReader;
 import android.media.MediaRecorder;
 import android.os.Build;
 import android.util.Log;
+import android.util.Range;
 import android.util.Size;
 import android.view.OrientationEventListener;
 import android.view.Surface;
@@ -104,7 +105,10 @@ public class Camera {
   private boolean mManualFocusEngaged = false;
   private boolean isMeteringAreaAFSupported() {
         return mCameraCharacteristics.get(CameraCharacteristics.CONTROL_MAX_REGIONS_AF) >= 1;
+
   }
+  private Range<Integer> aeFPSRange;
+
   // Mirrors camera.dart
   public enum ResolutionPreset {
     low,
@@ -164,10 +168,36 @@ public class Camera {
     isFrontFacing =
             mCameraCharacteristics.get(CameraCharacteristics.LENS_FACING) == CameraMetadata.LENS_FACING_FRONT;
     ResolutionPreset preset = ResolutionPreset.valueOf(resolutionPreset);
+
+
+    setBestAERange(mCameraCharacteristics);
     recordingProfile =
         CameraUtils.getBestAvailableCamcorderProfileForResolutionPreset(cameraName, preset);
     captureSize = new Size(recordingProfile.videoFrameWidth, recordingProfile.videoFrameHeight);
     previewSize = computeBestPreviewSize(cameraName, preset);
+  }
+
+  private void setBestAERange(CameraCharacteristics characteristics) {
+    Range<Integer>[] fpsRanges =
+            characteristics.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES);
+
+    if (fpsRanges.length <= 0) {
+      return;
+    }
+
+    Integer idx = 0;
+    Integer biggestDiference = 0;
+
+    for (Integer i = 0; i < fpsRanges.length; i++) {
+      Integer currentDifference = fpsRanges[i].getUpper() - fpsRanges[i].getLower();
+
+      if (currentDifference > biggestDiference) {
+        idx = i;
+        biggestDiference = currentDifference;
+      }
+    }
+
+    aeFPSRange = fpsRanges[idx];
   }
 
   private void prepareMediaRecorder(String outputFilePath) throws IOException {
@@ -612,6 +642,10 @@ public class Camera {
               updateFlash();
               updateWhiteBalance();
 
+              if (Camera.this.aeFPSRange != null) {
+                mPreviewRequestBuilder.set(
+                        CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, Camera.this.aeFPSRange);
+              }
               mPreviewRequestBuilder.set(
                   CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
               mCaptureSession.setRepeatingRequest(mPreviewRequestBuilder.build(), mCaptureCallback, null);
