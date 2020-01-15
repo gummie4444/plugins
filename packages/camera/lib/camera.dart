@@ -18,10 +18,13 @@ enum CameraLensDirection { front, back, external }
 enum FlashMode {
   /// The flash is disabled
   off,
+
   /// Fire flash for this capture
   alwaysFlash,
+
   /// Flash light is continuously ON
   torch,
+
   /// Fire the flash for this capture if needed
   autoFlash,
 }
@@ -272,6 +275,7 @@ class CameraController extends ValueNotifier<CameraValue> {
         this.enableAudio = true,
         this.autoFocusEnabled = true,
         this.flashMode = FlashMode.off,
+        this.enableAutoExposure = true
       }) : super(const CameraValue.uninitialized());
 
   final CameraDescription description;
@@ -283,6 +287,7 @@ class CameraController extends ValueNotifier<CameraValue> {
   ///Whether the auttoFocus is enabled
   final bool autoFocusEnabled;
   final FlashMode flashMode;
+  final enableAutoExposure;
 
   int _textureId;
   bool _isDisposed = false;
@@ -307,6 +312,7 @@ class CameraController extends ValueNotifier<CameraValue> {
           'resolutionPreset': serializeResolutionPreset(resolutionPreset),
           'enableAudio': enableAudio,
           'autoFocusEnabled': autoFocusEnabled,
+          'enableAutoExposure': autoFocusEnabled,
           'flashMode': flashMode.index,
         },
       );
@@ -363,23 +369,6 @@ class CameraController extends ValueNotifier<CameraValue> {
     }
   }
 
-
-  Future<Null> setPointOfInterest(Offset offset) async {
-    if (!value.isInitialized || _isDisposed) {
-      throw CameraException(
-        'Uninitialized CameraController.',
-        'takePicture was called on uninitialized CameraController',
-      );
-    }
-    try {
-      await _channel.invokeMethod(
-        'setPointOfInterest',
-        <String, dynamic>{'offsetX': offset.dx, 'offsetY': offset.dy},
-      );
-    } on PlatformException catch (e) {
-      throw CameraException(e.code, e.message);
-    }
-  }
 
   /// Captures an image and saves it to [path].
   ///
@@ -632,6 +621,7 @@ class CameraController extends ValueNotifier<CameraValue> {
       throw CameraException(e.code, e.message);
     }
   }
+
   // Set setFlashMode on camera
   Future<void> setFlashMode(FlashMode flashMode) async {
     value = value.copyWith(flashMode: flashMode);
@@ -640,6 +630,46 @@ class CameraController extends ValueNotifier<CameraValue> {
         'setFlashMode',
         <String, dynamic>{'flashMode': flashMode.index},
       );
+    } on PlatformException catch (e) {
+      throw CameraException(e.code, e.message);
+    }
+  }
+
+  ///
+  /// change zoom by specific [step].
+  ///
+  Future<void> zoom(double step) async {
+    await _channel.invokeMethod<void>('zoom', <String, dynamic>{'step': step});
+  }
+
+  Future<Null> setPointOfInterest(Offset offset) async {
+    if (!value.isInitialized || _isDisposed) {
+      throw CameraException(
+        'Uninitialized CameraController.',
+        'takePicture was called on uninitialized CameraController',
+      );
+    }
+    try {
+      await _channel.invokeMethod(
+        'setPointOfInterest',
+        <String, dynamic>{'offsetX': offset.dx, 'offsetY': offset.dy},
+      );
+    } on PlatformException catch (e) {
+      throw CameraException(e.code, e.message);
+    }
+  }
+
+  /// check if the device has a flash.
+  Future<bool> get hasFlash async {
+    if (!value.isInitialized || _isDisposed) {
+      throw CameraException(
+        'Uninitialized CameraController.',
+        'hasFlash was called on uninitialized CameraController',
+      );
+    }
+
+    try {
+      return await _channel.invokeMethod<bool>('hasFlash');
     } on PlatformException catch (e) {
       throw CameraException(e.code, e.message);
     }
@@ -663,12 +693,5 @@ class CameraController extends ValueNotifier<CameraValue> {
     }
   }
 
-  ///
-  /// change zoom by specific [step].
-  /// with a negative step, the zoom will be 1
-  ///
-  Future<void> zoom(double step) async {
-    await _channel.invokeMethod<void>('zoom', <String, dynamic>{'step': step});
-  }
 
 }

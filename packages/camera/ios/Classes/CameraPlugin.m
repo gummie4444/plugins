@@ -162,6 +162,8 @@ static ResolutionPreset getResolutionPresetForString(NSString *preset) {
 @property(readonly, nonatomic) int64_t textureId;
 @property(nonatomic, copy) void (^onFrameAvailable)();
 @property BOOL enableAudio;
+@property int flashMode;
+@property BOOL enableAutoExposure;
 @property(nonatomic) FlutterEventChannel *eventChannel;
 @property(nonatomic) FLTImageStreamHandler *imageStreamHandler;
 @property(nonatomic) FlutterEventSink eventSink;
@@ -195,6 +197,8 @@ static ResolutionPreset getResolutionPresetForString(NSString *preset) {
 - (instancetype)initWithCameraName:(NSString *)cameraName
                   resolutionPreset:(NSString *)resolutionPreset
                        enableAudio:(BOOL)enableAudio
+                        flashMode:(int)flashMode
+                        enableAutoExposure:(BOOL)enableAutoExposure
                      dispatchQueue:(dispatch_queue_t)dispatchQueue
                              error:(NSError **)error;
 
@@ -205,6 +209,7 @@ static ResolutionPreset getResolutionPresetForString(NSString *preset) {
 - (void)startImageStreamWithMessenger:(NSObject<FlutterBinaryMessenger> *)messenger;
 - (void)stopImageStream;
 - (void)captureToFile:(NSString *)filename result:(FlutterResult)result;
+- (void)setFlashMode:(int)flashMode;
 @end
 
 @implementation FLTCam {
@@ -216,6 +221,8 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
 - (instancetype)initWithCameraName:(NSString *)cameraName
                   resolutionPreset:(NSString *)resolutionPreset
                        enableAudio:(BOOL)enableAudio
+                       flashMode:(int)flashMode
+                       enableAutoExposure:(BOOL)enableAutoExposure
                      dispatchQueue:(dispatch_queue_t)dispatchQueue
                              error:(NSError **)error {
   self = [super init];
@@ -260,6 +267,12 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
   _motionManager = [[CMMotionManager alloc] init];
   [_motionManager startAccelerometerUpdates];
 
+  [self setFlashMode:flashMode];
+
+  if (enableAutoExposure) {
+    [self setAutoExposureMode:enableAutoExposure];
+  }
+
   [self setCaptureSessionPreset:_resolutionPreset];
   return self;
 }
@@ -277,6 +290,15 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
   if (_resolutionPreset == max) {
     [settings setHighResolutionPhotoEnabled:YES];
   }
+
+  if(_flashMode == 1){
+    [settings setFlashMode:AVCaptureFlashModeOn];
+  } else if(_flashMode == 0) {
+      [settings setFlashMode:AVCaptureFlashModeOff];
+  } else if(_flashMode == 3) {
+      [settings setFlashMode:AVCaptureFlashModeAuto];
+  }
+    
   [_capturePhotoOutput
       capturePhotoWithSettings:settings
                       delegate:[[FLTSavePhotoDelegate alloc] initWithPath:path
@@ -668,6 +690,53 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
         @{@"event" : @"error", @"errorDescription" : @"Images from camera are not streaming!"});
   }
 }
+- (bool)hasFlash {
+  AVCaptureDevice *device = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeVideo];
+  return ([device hasFlash] && [device hasFlash]);
+}
+- (void)setFlashMode:(int)flashMode {
+  [self setFlashMode:flashMode level:1.0];
+}
+
+- (void)setFlashMode:(int)flashMode level:(float)level {
+    _flashMode = flashMode;
+}
+
+- (void)setAutoExposureMode:(BOOL)enable {
+  [_captureDevice lockForConfiguration:nil];
+  if (enable) {
+      if([_captureDevice isExposureModeSupported:AVCaptureExposureModeContinuousAutoExposure])
+    [_captureDevice setExposureMode:AVCaptureExposureModeContinuousAutoExposure];
+  } else {
+    [_captureDevice setExposureMode:AVCaptureExposureModeAutoExpose];
+  }
+  [_captureDevice unlockForConfiguration];
+}
+
+- (void)zoom:(double)zoom {
+
+    NSError *error = nil;
+
+    if(_captureDevice == nil){
+        return;
+    }
+
+    if (![_captureDevice lockForConfiguration:&error]) {
+        return;
+    }
+
+    float maxZoom = _captureDevice.activeFormat.videoMaxZoomFactor;
+
+    if(zoom > maxZoom){
+        _captureDevice.videoZoomFactor = maxZoom;
+    } else {
+        _captureDevice.videoZoomFactor = (float) zoom;
+    }
+
+
+    [_captureDevice unlockForConfiguration];
+}
+
 
 - (BOOL)setupWriterForPath:(NSString *)path {
   NSError *error = nil;
@@ -792,7 +861,7 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
   if (_dispatchQueue == nil) {
     _dispatchQueue = dispatch_queue_create("io.flutter.camera.dispatchqueue", NULL);
   }
-
+	
   // Invoke the plugin on another dispatch queue to avoid blocking the UI.
   dispatch_async(_dispatchQueue, ^{
     [self handleMethodCallAsync:call result:result];
@@ -832,10 +901,14 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
     NSString *cameraName = call.arguments[@"cameraName"];
     NSString *resolutionPreset = call.arguments[@"resolutionPreset"];
     NSNumber *enableAudio = call.arguments[@"enableAudio"];
+    NSNumber *flashMode = call.arguments[@"flashMode"];
+    NSNumber *enableAutoExposure = call.arguments[@"enableAutoExposure"];
     NSError *error;
     FLTCam *cam = [[FLTCam alloc] initWithCameraName:cameraName
                                     resolutionPreset:resolutionPreset
                                          enableAudio:[enableAudio boolValue]
+                                         flashMode:[flashMode intValue]
+                                        enableAutoExposure:[enableAutoExposure boolValue]
                                        dispatchQueue:_dispatchQueue
                                                error:&error];
     if (error) {
@@ -875,9 +948,26 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
     [_camera pauseVideoRecording];
     result(nil);
   } else if ([@"resumeVideoRecording" isEqualToString:call.method]) {
-    [_camera resumeVideoRecording];
+       [_camera resumeVideoRecording];
+       result(nil);
+  } else if ([@"hasFlash" isEqualToString:call.method]) {
+       result([NSNumber numberWithBool:[_camera hasFlash]]);
+  } else if ([@"setFlashMode" isEqualToString:call.method]) {
+    NSNumber *flashMode = call.arguments[@"flashMode"];
+    [_camera setFlashMode:[flashMode intValue]];
     result(nil);
-  } else {
+  }  else if ([@"autoExposureOn" isEqualToString:call.method]) {
+    [_camera setAutoExposureMode:true];
+    result(nil);
+  } else if ([@"autoExposureOff" isEqualToString:call.method]) {
+    [_camera setAutoExposureMode:false];
+  } else if ([@"zoom" isEqualToString:call.method]){
+      NSNumber *step = call.arguments[@"step"];
+      [_camera zoom:[step doubleValue]];
+      result(nil);
+
+  }
+    else {
     NSDictionary *argsMap = call.arguments;
     NSUInteger textureId = ((NSNumber *)argsMap[@"textureId"]).unsignedIntegerValue;
 

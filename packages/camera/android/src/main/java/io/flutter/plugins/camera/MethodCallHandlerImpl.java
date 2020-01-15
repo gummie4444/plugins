@@ -170,6 +170,11 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
         }
         break;
       }
+      case "hasFlash":
+      {
+        result.success(hasFlash());
+        break;
+      }
 
       case "dispose":
         {
@@ -190,6 +195,12 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
     methodChannel.setMethodCallHandler(null);
   }
 
+  private boolean hasFlash() {
+    return activity
+            .getApplicationContext()
+            .getPackageManager()
+            .hasSystemFeature(PackageManager.FEATURE_CAMERA_FLASH);
+  }
   private void instantiateCamera(MethodCall call, Result result) throws CameraAccessException {
     String cameraName = call.argument("cameraName");
     String resolutionPreset = call.argument("resolutionPreset");
