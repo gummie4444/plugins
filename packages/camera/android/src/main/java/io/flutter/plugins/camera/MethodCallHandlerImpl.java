@@ -207,6 +207,7 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
     String resolutionPreset = call.argument("resolutionPreset");
     boolean enableAudio = call.argument("enableAudio");
     boolean autoFocusEnabled = call.argument("autoFocusEnabled");
+    boolean enableAutoExposure = call.argument("enableAutoExposure");
     int flashMode = call.argument("flashMode");
 
     TextureRegistry.SurfaceTextureEntry flutterSurfaceTexture =
@@ -219,7 +220,10 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
             dartMessenger,
             cameraName,
             resolutionPreset,
-            enableAudio, autoFocusEnabled, flashMode);
+            enableAudio,
+                autoFocusEnabled,
+                enableAutoExposure,
+                flashMode);
 
     camera.open(result);
   }

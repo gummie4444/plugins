@@ -81,6 +81,8 @@ public class Camera {
   private final Size previewSize;
   private final boolean enableAudio;
   private final boolean mFlashSupported;
+  private final boolean mEnableAutoExposure
+          ;
 
   private CameraDevice cameraDevice;
   private CameraCaptureSession mCaptureSession;
@@ -127,6 +129,7 @@ public class Camera {
       final String resolutionPreset,
       final boolean enableAudio,
       final boolean autoFocusEnabled,
+      final boolean enableAutoExposure,
       final int flashMode
   )
       throws CameraAccessException {
@@ -140,6 +143,7 @@ public class Camera {
     this.dartMessenger = dartMessenger;
     this.cameraManager = (CameraManager) activity.getSystemService(Context.CAMERA_SERVICE);
     this.mAutoFocus = autoFocusEnabled;
+    this.mEnableAutoExposure = enableAutoExposure;
     this.mFlash = flashMode;
 
     orientationEventListener =
@@ -170,7 +174,6 @@ public class Camera {
     ResolutionPreset preset = ResolutionPreset.valueOf(resolutionPreset);
 
 
-    setBestAERange(mCameraCharacteristics);
     recordingProfile =
         CameraUtils.getBestAvailableCamcorderProfileForResolutionPreset(cameraName, preset);
     captureSize = new Size(recordingProfile.videoFrameWidth, recordingProfile.videoFrameHeight);
@@ -640,7 +643,7 @@ public class Camera {
 
               updateAutoFocus();
               updateFlash();
-              updateWhiteBalance();
+              //updateWhiteBalance();
 
               if (Camera.this.aeFPSRange != null) {
                 mPreviewRequestBuilder.set(
